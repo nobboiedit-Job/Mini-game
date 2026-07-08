@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Key Shuffle Minigame</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    background:
+      repeating-linear-gradient(35deg, rgba(255,20,20,0.05) 0px, rgba(255,20,20,0.05) 1px, transparent 1px, transparent 60px),
+      repeating-linear-gradient(-35deg, rgba(255,20,20,0.05) 0px, rgba(255,20,20,0.05) 1px, transparent 1px, transparent 60px),
+      radial-gradient(ellipse at center, #170303 0%, #030000 75%);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  #stage { position: fixed; inset: 0; z-index: 2; }
+
+  .block {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 90px;
+    height: 90px;
+    border-radius: 16px;
+    background: linear-gradient(160deg, #2a0a0a, #0d0000);
+    box-shadow:
+      inset 0 0 0 2px rgba(255,60,40,0.25),
+      inset 0 6px 10px rgba(255,90,60,0.12),
+      inset 0 -8px 14px rgba(0,0,0,0.6),
+      0 0 18px rgba(255,20,20,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    will-change: transform;
+    transition: transform 0.16s ease-out, box-shadow 0.2s ease;
+    cursor: default;
+  }
+
+  .block .keyIcon {
+    width: 40px;
+    height: 40px;
+    color: #ff4433;
+    filter: drop-shadow(0 0 6px currentColor);
+    transition: opacity 0.2s ease;
+  }
+  .block.correct .keyIcon,
+  .block.wrong .keyIcon,
+  .block.reveal .keyIcon {
+    opacity: 0;
+  }
+
+  .floatWrap {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    animation-name: floatKey;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+
+  @keyframes floatKey {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(var(--floatY, -6px)) rotate(var(--floatRot, 2deg)); }
+  }
+
+  .block.clickable { cursor: pointer; }
+  .block.clickable:hover {
+    box-shadow:
+      inset 0 0 0 2px rgba(255,255,255,0.2),
+      inset 0 6px 10px rgba(255,255,255,0.06),
+      inset 0 -8px 14px rgba(0,0,0,0.5),
+      0 0 20px 4px rgba(255,255,255,0.25);
+  }
+
+  .block .check {
+    position: absolute;
+    width: 46px;
+    height: 46px;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .block .check.show { opacity: 1; transform: scale(1); }
+
+  .block .cross {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .block .cross.show { opacity: 1; transform: scale(1); }
+
+  .block.correct {
+    box-shadow:
+      inset 0 0 0 2px rgba(255,255,255,0.1),
+      inset 0 6px 10px rgba(255,255,255,0.08),
+      inset 0 -8px 14px rgba(0,0,0,0.5),
+      0 0 30px 8px #33ff66;
+  }
+  .block.wrong {
+    box-shadow:
+      inset 0 0 0 2px rgba(255,255,255,0.1),
+      inset 0 6px 10px rgba(255,255,255,0.08),
+      inset 0 -8px 14px rgba(0,0,0,0.5),
+      0 0 30px 8px #ff3344;
+  }
+
+  #controls {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    color: #fff;
+    background: rgba(255,255,255,0.08);
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+    flex-wrap: wrap;
+    max-width: 90vw;
+  }
+  #controls input { width: 60px; }
+  #controls button {
+    background: #fff2;
+    border: 1px solid #fff5;
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  #controls button:hover:not(:disabled) { background: #fff4; }
+  #controls button:disabled { opacity: 0.4; cursor: default; }
+
+  #status {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 16px;
+    opacity: 0.85;
+    z-index: 10;
+    text-align: center;
+  }  #bgFlash {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(255,40,20,0.9) 0%, rgba(120,0,0,0.4) 45%, rgba(0,0,0,0) 80%);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+
+<div id="bgFlash"></div>
+
+<div id="controls">
+  <label>BPM: <input id="bpmInput" type="number" value="174" min="20" max="300"></label>
+  <label>Swaps: <input id="stepsInput" type="number" value="40" min="4" max="120"></label>
+  <label>Difficulty:
+    <select id="difficultySelect">
+      <option value="easy">Easy</option>
+      <option value="normal" selected>Normal</option>
+      <option value="hard">Hard</option>
+      <option value="insane">Insane</option>
+    </select>
+  </label>
+  <button id="runBtn">Start</button>
+</div>
+
+<div id="stage"></div>
+<div id="status">Press start — watch which key gets marked, then track it through the shuffle.</div>
+
+<script>
+const stage = document.getElementById('stage');
+const bgFlash = document.getElementById('bgFlash');
+const bpmInput = document.getElementById('bpmInput');
+const stepsInput = document.getElementById('stepsInput');
+const difficultySelect = document.getElementById('difficultySelect');
+const runBtn = document.getElementById('runBtn');
+const statusEl = document.getElementById('status');
+
+const keyOutlineSvg = `
+<svg class="keyIcon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="8.5" cy="8.5" r="4.3" stroke="currentColor" stroke-width="1.8"/>
+  <path d="M11.6 11.6L20 20M15.5 16L18 18.5M17.7 13.8L19.4 15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+</svg>`;
+
+const checkSvg = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 12.5L9.5 18L20 6" stroke="#33ff66" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const crossSvg = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M5 5L19 19M19 5L5 19" stroke="#ff3344" stroke-width="3" stroke-linecap="round"/>
+</svg>`;
+
+const COLS = 4;
+const ROWS = 2;
+const COUNT = COLS * ROWS;
+const BLOCK = 90;
+const GAP = 22;
+
+const blocks = [];
+for (let i = 0; i < COUNT; i++) {
+  const el = document.createElement('div');
+  el.className = 'block';
+  el.innerHTML = `<div class="floatWrap">${keyOutlineSvg}<div class="check">${checkSvg}</div><div class="cross">${crossSvg}</div></div>`;
+  stage.appendChild(el);
+  blocks.push(el);
+}
+
+// Give every key a slightly different flutter — same idea, never identical twice
+function randomizeFloat(intensity = 1) {
+  blocks.forEach(el => {
+    const wrap = el.querySelector('.floatWrap');
+    const amp = -(3 + Math.random() * 6) * intensity;
+    const rot = (Math.random() * 5 - 2.5) * intensity;
+    const duration = (1.7 + Math.random() * 1.8) / Math.sqrt(intensity);
+    const delay = -(Math.random() * duration);
+    wrap.style.setProperty('--floatY', `${amp}px`);
+    wrap.style.setProperty('--floatRot', `${rot}deg`);
+    wrap.style.animationDuration = `${duration}s`;
+    wrap.style.animationDelay = `${delay}s`;
+  });
+}
+randomizeFloat();
+
+const DIFFICULTY = {
+  easy:   { reveal: 1300, speedMul: 0.7, simultaneous: 1, flutter: 0.6, patterns: ['swap'] },
+  normal: { reveal: 900,  speedMul: 1,   simultaneous: 1, flutter: 1,   patterns: ['swap'] },
+  hard:   { reveal: 550,  speedMul: 1.5, simultaneous: 2, flutter: 1.6, patterns: ['swap', 'swap', 'cross'] },
+  insane: { reveal: 350,  speedMul: 2.1, simultaneous: 3, flutter: 2.2, patterns: ['swap', 'cross', 'cross', 'flip'] }
+};
+
+function wait(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+function gridSlots() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const gridW = COLS * BLOCK + (COLS - 1) * GAP;
+  const gridH = ROWS * BLOCK + (ROWS - 1) * GAP;
+  const originX = (vw - gridW) / 2;
+  const originY = (vh - gridH) / 2;
+  const slots = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      slots.push({ x: originX + c * (BLOCK + GAP), y: originY + r * (BLOCK + GAP) });
+    }
+  }
+  return slots;
+}
+
+function place(el, x, y) {
+  el.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+function shuffleArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function randFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// Swap two slots directly
+function swapPositions(slots, i, j) {
+  const elA = currentOrder[i];
+  const elB = currentOrder[j];
+  place(elA, slots[j].x, slots[j].y);
+  place(elB, slots[i].x, slots[i].y);
+  currentOrder[i] = elB;
+  currentOrder[j] = elA;
+}
+
+// 2x2 cross shuffle: pick a 2x2 block (two adjacent columns, both rows)
+// and swap it diagonally — top-left<->bottom-right, top-right<->bottom-left
+function crossSwapStep(slots) {
+  const c = randInt(0, COLS - 2);
+  const TL = c, TR = c + 1, BL = COLS + c, BR = COLS + c + 1;
+  swapPositions(slots, TL, BR);
+  swapPositions(slots, TR, BL);
+}
+
+// Flip the whole board: mirror horizontally, mirror vertically, or rotate 180
+function flipBoardStep(slots) {
+  const mode = randFrom(['h', 'v', 'r']);
+  const newOrder = currentOrder.slice();
+
+  if (mode === 'h') {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        newOrder[r * COLS + (COLS - 1 - c)] = currentOrder[r * COLS + c];
+      }
+    }
+  } else if (mode === 'v') {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        newOrder[(ROWS - 1 - r) * COLS + c] = currentOrder[r * COLS + c];
+      }
+    }
+  } else {
+    for (let idx = 0; idx < COUNT; idx++) {
+      newOrder[COUNT - 1 - idx] = currentOrder[idx];
+    }
+  }
+
+  newOrder.forEach((el, i) => place(el, slots[i].x, slots[i].y));
+  currentOrder = newOrder;
+}
+
+const flashColors = [
+  'rgba(255,40,20,0.9) 0%, rgba(120,0,0,0.4) 45%, rgba(0,0,0,0) 80%',
+  'rgba(255,90,0,0.85) 0%, rgba(130,20,0,0.4) 45%, rgba(0,0,0,0) 80%',
+  'rgba(255,0,60,0.85) 0%, rgba(100,0,30,0.4) 45%, rgba(0,0,0,0) 80%',
+  'rgba(255,255,255,0.5) 0%, rgba(150,0,0,0.35) 45%, rgba(0,0,0,0) 80%'
+];
+
+function flash() {
+  document.body.animate([
+    { filter: "brightness(1.6)" },
+    { filter: "brightness(1)" }
+  ], { duration: 80 });
+
+  bgFlash.style.background = `radial-gradient(ellipse at center, ${randFrom(flashColors)})`;
+  bgFlash.animate([
+    { opacity: 0.9 },
+    { opacity: 0 }
+  ], { duration: 220, easing: 'ease-out' });
+}
+
+// current slot order: currentOrder[slotIndex] = block element sitting there
+let currentOrder = [];
+
+function snapToGrid(order) {
+  const slots = gridSlots();
+  order.forEach((el, i) => place(el, slots[i].x, slots[i].y));
+  currentOrder = order.slice();
+}
+
+function resetVisuals() {
+  blocks.forEach(el => {
+    el.classList.remove('correct', 'wrong', 'clickable');
+    el.querySelector('.check').classList.remove('show');
+    el.querySelector('.cross').classList.remove('show');
+    el.onclick = null;
+  });
+}
+
+async function runSequence() {
+  runBtn.disabled = true;
+  const BPM = parseInt(bpmInput.value, 10) || 174;
+  const diff = DIFFICULTY[difficultySelect.value] || DIFFICULTY.normal;
+  const beat = (60000 / BPM) / diff.speedMul;
+  const halfBeat = beat / 2;
+  const swapCount = parseInt(stepsInput.value, 10) || 40;
+
+  resetVisuals();
+  randomizeFloat(diff.flutter);
+  snapToGrid(blocks);
+  const winner = blocks[randInt(0, COUNT - 1)];
+
+  await wait(300);
+
+  statusEl.textContent = 'Watch closely...';
+  winner.classList.add('reveal');
+  winner.querySelector('.check').classList.add('show');
+  flash();
+  await wait(diff.reveal);
+
+  winner.querySelector('.check').classList.remove('show');
+  winner.classList.remove('reveal');
+  await wait(150);
+
+  // Shuffle: only swap pairs of blocks between their grid slots — never leave the grid
+  statusEl.textContent = 'Shuffling...';
+  const slots = gridSlots();
+  for (let s = 0; s < swapCount; s++) {
+    const moveType = randFrom(diff.patterns);
+
+    if (moveType === 'cross') {
+      crossSwapStep(slots);
+    } else if (moveType === 'flip') {
+      flipBoardStep(slots);
+    } else {
+      for (let k = 0; k < diff.simultaneous; k++) {
+        const i = randInt(0, COUNT - 1);
+        let j = randInt(0, COUNT - 1);
+        while (j === i) j = randInt(0, COUNT - 1);
+        swapPositions(slots, i, j);
+      }
+    }
+
+    flash();
+    await wait(halfBeat);
+  }
+
+  // Let the player pick
+  statusEl.textContent = 'Which key is it? Click one!';
+  blocks.forEach(el => el.classList.add('clickable'));
+
+  blocks.forEach(el => {
+    el.onclick = () => {
+      blocks.forEach(b => { b.classList.remove('clickable'); b.onclick = null; });
+
+      const isCorrect = el === winner;
+      winner.querySelector('.check').classList.add('show');
+      winner.classList.add('correct');
+
+      if (!isCorrect) {
+        el.querySelector('.cross').classList.add('show');
+        el.classList.add('wrong');
+        statusEl.textContent = 'Not quite — here\'s where it actually was.';
+      } else {
+        statusEl.textContent = 'Nice! You found it.';
+      }
+
+      flash();
+      runBtn.disabled = false;
+    };
+  });
+}
+
+runBtn.addEventListener('click', runSequence);
+window.addEventListener('resize', () => snapToGrid(currentOrder.length ? currentOrder : blocks));
+snapToGrid(blocks);
+</script>
+
+</body>
+</html>
